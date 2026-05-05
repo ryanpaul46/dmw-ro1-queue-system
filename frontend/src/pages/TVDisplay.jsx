@@ -1,10 +1,20 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import api from '../services/api';
 import socket from '../socket';
 
 export default function TVDisplay() {
   const [counters, setCounters] = useState([]);
   const [recent, setRecent] = useState([]);
+  const [unlocked, setUnlocked] = useState(false);
+  const pendingRef = useRef(null);
+
+  const speak = useCallback((text) => {
+    window.speechSynthesis.cancel();
+    const msg = new SpeechSynthesisUtterance(text);
+    msg.lang = 'en-US';
+    msg.rate = 0.9;
+    window.speechSynthesis.speak(msg);
+  }, []);
 
   const fetchCounters = useCallback(async () => {
     try {
@@ -33,12 +43,12 @@ export default function TVDisplay() {
     });
 
     socket.on('announce', ({ queue_number, counter_name }) => {
-      const msg = new SpeechSynthesisUtterance(
-        `Queue number ${queue_number}, please proceed to ${counter_name}.`
-      );
-      msg.lang = 'en-PH';
-      msg.rate = 0.9;
-      window.speechSynthesis.speak(msg);
+      const text = `Queue number ${queue_number}, please proceed to ${counter_name}.`;
+      if (unlocked) {
+        speak(text);
+      } else {
+        pendingRef.current = text;
+      }
     });
 
     return () => {
@@ -49,14 +59,25 @@ export default function TVDisplay() {
 
   const openCounters = counters.filter((c) => c.status === 'open');
 
+  const handleUnlock = () => {
+    setUnlocked(true);
+    if (pendingRef.current) {
+      speak(pendingRef.current);
+      pendingRef.current = null;
+    }
+  };
+
   return (
-    <div className="min-vh-100 d-flex flex-column bg-dark text-white" style={{ fontFamily: "'Segoe UI', sans-serif" }}>
+    <div className="min-vh-100 d-flex flex-column bg-dark text-white" style={{ fontFamily: "'Segoe UI', sans-serif" }} onClick={!unlocked ? handleUnlock : undefined}>
       {/* Header */}
       <header className="bg-primary text-center py-3 shadow">
         <h1 className="fw-bold mb-0 fs-3 text-uppercase">
           Department of Migrant Workers — Regional Office I
         </h1>
         <p className="mb-0 opacity-75 small">Queue Display Board</p>
+        {!unlocked && (
+          <p className="mb-0 text-warning small mt-1">🔇 Click anywhere to enable voice announcements</p>
+        )}
       </header>
 
       {/* Counter Grid */}

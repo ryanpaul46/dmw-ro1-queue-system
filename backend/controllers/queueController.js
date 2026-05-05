@@ -124,4 +124,26 @@ const callNext = async (req, res) => {
   }
 };
 
-module.exports = { createQueue, getQueues, callNext };
+const announceAgain = async (req, res) => {
+  const { counterId } = req.params;
+  try {
+    const { rows } = await pool.query(
+      `SELECT q.queue_number, s.name AS service_name, c.name AS counter_name
+       FROM queues q
+       JOIN services s ON s.id = q.service_id
+       JOIN counters c ON c.id = q.counter_id
+       WHERE q.counter_id = $1 AND q.status = 'serving'
+       LIMIT 1`,
+      [counterId]
+    );
+    if (!rows[0]) return res.status(404).json({ message: 'No active queue for this counter' });
+    const io = req.app.get('io');
+    io.emit('announce', rows[0]);
+    res.json(rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+module.exports = { createQueue, getQueues, callNext, announceAgain };

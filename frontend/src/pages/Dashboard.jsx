@@ -9,6 +9,7 @@ export default function Dashboard() {
   const [queues, setQueues] = useState([]);
   const [activeTab, setActiveTab] = useState('counters');
   const [calling, setCalling] = useState(null);
+  const [announcing, setAnnouncing] = useState(null);
   const [error, setError] = useState('');
   const navigate = useNavigate();
   const user = JSON.parse(localStorage.getItem('user') || '{}');
@@ -31,11 +32,34 @@ export default function Dashboard() {
     return () => socket.off('queueUpdated', fetchData);
   }, [fetchData]);
 
+  const speak = (queue_number, counter_name) => {
+    window.speechSynthesis.cancel();
+    const msg = new SpeechSynthesisUtterance(
+      `Queue number ${queue_number}, please proceed to ${counter_name}.`
+    );
+    msg.lang = 'en-US';
+    msg.rate = 0.9;
+    window.speechSynthesis.speak(msg);
+  };
+
+  const callAgain = async (counterId) => {
+    setAnnouncing(counterId);
+    try {
+      const { data } = await api.post(`/queue/announce/${counterId}`);
+      speak(data.queue_number, data.counter_name);
+    } catch (err) {
+      setError(err.response?.data?.message || 'No active queue');
+    } finally {
+      setAnnouncing(null);
+    }
+  };
+
   const callNext = async (counterId) => {
     setCalling(counterId);
     setError('');
     try {
-      await api.post(`/queue/next/${counterId}`);
+      const { data } = await api.post(`/queue/next/${counterId}`);
+      speak(data.queue_number, data.counter_name);
     } catch (err) {
       setError(err.response?.data?.message || 'No waiting queues');
     } finally {
@@ -145,6 +169,16 @@ export default function Dashboard() {
                         ? <span className="spinner-border spinner-border-sm me-1" />
                         : null}
                       Call Next
+                    </button>
+                    <button
+                      className="btn btn-outline-secondary btn-sm"
+                      onClick={() => callAgain(counter.id)}
+                      disabled={announcing === counter.id || !counter.current_queue || counter.status === 'closed'}
+                      title="Re-announce current queue"
+                    >
+                      {announcing === counter.id
+                        ? <span className="spinner-border spinner-border-sm" />
+                        : '🔁'}
                     </button>
                     {user.role === 'admin' && (
                       <button
